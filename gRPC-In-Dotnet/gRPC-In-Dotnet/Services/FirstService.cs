@@ -45,6 +45,11 @@ namespace gRPC_In_Dotnet.Services
         {
             for (int i = 0; i < 100; i++)
             {
+                if (context.CancellationToken.IsCancellationRequested)
+                {
+                    _logger.LogInformation("Client cancelled the request.");
+                    return;
+                }
                 var response = new Response
                 {
                     Message = $"Hello {request.Content} from server stream {i + 1}"
