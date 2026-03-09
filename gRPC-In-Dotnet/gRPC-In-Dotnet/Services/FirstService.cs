@@ -43,6 +43,10 @@ namespace gRPC_In_Dotnet.Services
 
         public override async Task ServerStreaming(Request request, IServerStreamWriter<Response> responseStream, ServerCallContext context)
         {
+            var headers = context.RequestHeaders.Get("Einav");
+            var trailer = new Metadata.Entry("Trailer", "Trailer value");
+            context.ResponseTrailers.Add(trailer);
+
             for (int i = 0; i < 100; i++)
             {
                 if (context.CancellationToken.IsCancellationRequested)

@@ -1,9 +1,16 @@
 using gRPC_In_Dotnet.Services;
+using System.IO.Compression;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddGrpc();
+builder.Services.AddGrpc(
+    options =>
+    {
+        options.ResponseCompressionAlgorithm = "gzip";
+        options.ResponseCompressionLevel = CompressionLevel.SmallestSize;
+
+    });
 
 var app = builder.Build();
 

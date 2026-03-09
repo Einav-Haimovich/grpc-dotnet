@@ -1,6 +1,7 @@
 ﻿using Basics;
 using Grpc.Core;
 using Grpc.Net.Client;
+using static Grpc.Core.Metadata;
 
 var options = new GrpcChannelOptions
 {
@@ -46,13 +47,17 @@ async Task ServerStreamingAsync(FirstServiceDefinition.FirstServiceDefinitionCli
     try
     {
         var cts = new CancellationTokenSource();
+        var metaData = new Metadata();
+
+        metaData.Add(new Entry("Einav", "Haimovich"));
+
 
 
         var req = new Request
         {
             Content = "Einav Haimovich"
         };
-        using var call = client.ServerStreaming(req);
+        using var call = client.ServerStreaming(req, headers: metaData);
         await foreach (var res in call.ResponseStream.ReadAllAsync(cts.Token))
         {
             Console.WriteLine(res.Message);
@@ -61,6 +66,9 @@ async Task ServerStreamingAsync(FirstServiceDefinition.FirstServiceDefinitionCli
                 cts.Cancel();
             }
         }
+
+        var serverTrailers = call.GetTrailers();
+        var trailerValue = serverTrailers.Get("Trailer");
     }
     catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled)
     {
