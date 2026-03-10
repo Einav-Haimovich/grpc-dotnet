@@ -1,13 +1,58 @@
-﻿using Basics;
+using Basics;
 using Grpc.Core;
 using Grpc.Net.Client;
+using Grpc.Net.Client.Configuration;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 using static Grpc.Core.Metadata;
 
-var options = new GrpcChannelOptions
-{
+// --- JWT token generation (same secret as server) ---
+const string jwtKey = "super-secret-key-that-is-long-enough-for-hmac256";
+const string jwtIssuer = "grpc-server";
+const string jwtAudience = "grpc-client";
 
+string GenerateToken()
+{
+    var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
+    var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+    var token = new JwtSecurityToken(
+        issuer: jwtIssuer,
+        audience: jwtAudience,
+        claims: new[] { new Claim(ClaimTypes.Name, "console-client") },
+        expires: DateTime.UtcNow.AddHours(1),
+        signingCredentials: creds);
+
+    return new JwtSecurityTokenHandler().WriteToken(token);
+}
+
+// --- gRPC channel with CallCredentials (attaches Bearer token to every call) ---
+var callCredentials = CallCredentials.FromInterceptor((context, metadata) =>
+{
+    metadata.Add("Authorization", $"Bearer {GenerateToken()}");
+    return Task.CompletedTask;
+});
+
+var hedgingPolicy = new MethodConfig
+{
+    Names = { MethodName.Default },
+    HedgingPolicy = new HedgingPolicy
+    {
+        MaxAttempts = 5,
+        NonFatalStatusCodes = { StatusCode.Internal },
+        HedgingDelay = TimeSpan.FromSeconds(1)
+    }
 };
-using var channel = GrpcChannel.ForAddress("http://localhost:5210", options);
+
+// CallCredentials require either TLS or UnsafeUseInsecureChannelCallCredentials for plain HTTP.
+using var channel = GrpcChannel.ForAddress("http://localhost:5210", new GrpcChannelOptions
+{
+    UnsafeUseInsecureChannelCallCredentials = true,
+    Credentials = ChannelCredentials.Create(ChannelCredentials.Insecure, callCredentials),
+    ServiceConfig = new ServiceConfig { MethodConfigs = { hedgingPolicy } }
+});
 
 var client = new FirstServiceDefinition.FirstServiceDefinitionClient(channel);
 //Unary(client);
@@ -16,6 +61,7 @@ var client = new FirstServiceDefinition.FirstServiceDefinitionClient(channel);
 await BiDirectionalStreamingAsync(client);
 
 Console.ReadLine();
+
 void Unary(FirstServiceDefinition.FirstServiceDefinitionClient client)
 {
     var req = new Request
@@ -48,10 +94,7 @@ async Task ServerStreamingAsync(FirstServiceDefinition.FirstServiceDefinitionCli
     {
         var cts = new CancellationTokenSource();
         var metaData = new Metadata();
-
         metaData.Add(new Entry("Einav", "Haimovich"));
-
-
 
         var req = new Request
         {
@@ -72,10 +115,8 @@ async Task ServerStreamingAsync(FirstServiceDefinition.FirstServiceDefinitionCli
     }
     catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled)
     {
-        
-    }
 
-    
+    }
 }
 
 async Task BiDirectionalStreamingAsync(FirstServiceDefinition.FirstServiceDefinitionClient client)
@@ -90,7 +131,7 @@ async Task BiDirectionalStreamingAsync(FirstServiceDefinition.FirstServiceDefini
         await call.RequestStream.WriteAsync(req);
     }
 
-    while(await call.ResponseStream.MoveNext())
+    while (await call.ResponseStream.MoveNext())
     {
         var message = call.ResponseStream.Current;
         Console.WriteLine(message);

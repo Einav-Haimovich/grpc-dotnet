@@ -1,8 +1,10 @@
 ﻿using Basics;
 using Grpc.Core;
+using Microsoft.AspNetCore.Authorization;
 
 namespace gRPC_In_Dotnet.Services
 {
+    [Authorize]
     public class FirstService : FirstServiceDefinition.FirstServiceDefinitionBase
     {
         private readonly ILogger<FirstService> _logger;
@@ -14,6 +16,11 @@ namespace gRPC_In_Dotnet.Services
 
         public override Task<Response> Unary(Request request, ServerCallContext context)
         {
+            if (!context.RequestHeaders.Where(h => h.Key == "not-existing-ke").Any())
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "Missing required header: not-existing-ke"));
+            }
+
             _logger.LogInformation($"Received unary request: {request.Content}");
 
             var response = new Response
